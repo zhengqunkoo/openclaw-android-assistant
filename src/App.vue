@@ -69,7 +69,7 @@
             type="button"
             @click="router.push({ name: 'skills' })"
           >
-            Overview
+            Skills
           </button>
         </nav>
 
@@ -286,7 +286,7 @@ const isTerminalRoute = computed(() => route.name === 'terminal')
 const isSettingsRoute = computed(() => route.name === 'settings')
 const isChatPane = computed(() => !isSkillsRoute.value && !isTerminalRoute.value && !isSettingsRoute.value)
 const contentTitle = computed(() => {
-  if (isSkillsRoute.value) return 'Overview'
+  if (isSkillsRoute.value) return 'Skills'
   if (isTerminalRoute.value) return 'Terminal'
   if (isSettingsRoute.value) return 'Settings'
   if (isHomeRoute.value) return 'New thread'

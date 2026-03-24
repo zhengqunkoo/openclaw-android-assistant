@@ -1,7 +1,7 @@
 import { computed, ref, watch } from 'vue'
 
-const TTYD_URL_STORAGE_KEY = 'codex-web-local.ttyd-url.v1'
-const TTYD_PARAMS_STORAGE_KEY = 'codex-web-local.ttyd-params.v1'
+const TTYD_URL_STORAGE_KEY = 'openclaw.ttyd-url.v1'
+const TTYD_PARAMS_STORAGE_KEY = 'openclaw.ttyd-params.v1'
 
 export interface TtydParam {
   key: string

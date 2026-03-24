@@ -46,18 +46,35 @@
           </button>
         </div>
 
-        <button
-          v-if="!isSidebarCollapsed"
-          class="sidebar-skills-link"
-          :class="{ 'is-active': isSkillsRoute }"
-          type="button"
-          @click="router.push({ name: 'skills' })"
-        >
-          Skills Hub
-        </button>
+        <nav v-if="!isSidebarCollapsed" class="sidebar-pane-nav" aria-label="Pane navigation">
+          <button
+            class="sidebar-pane-nav-btn"
+            :class="{ 'is-active': isChatPane }"
+            type="button"
+            @click="onNavChat"
+          >
+            Chat
+          </button>
+          <button
+            class="sidebar-pane-nav-btn"
+            :class="{ 'is-active': isTerminalRoute }"
+            type="button"
+            @click="router.push({ name: 'terminal' })"
+          >
+            Terminal
+          </button>
+          <button
+            class="sidebar-pane-nav-btn"
+            :class="{ 'is-active': isSkillsRoute }"
+            type="button"
+            @click="router.push({ name: 'skills' })"
+          >
+            Skills
+          </button>
+        </nav>
 
         <SidebarThreadTree :groups="projectGroups" :project-display-name-by-id="projectDisplayNameById"
-          v-if="!isSidebarCollapsed"
+          v-if="!isSidebarCollapsed && isChatPane"
           :selected-thread-id="selectedThreadId" :is-loading="isLoadingThreads"
           :search-query="sidebarSearchQuery"
           @select="onSelectThread"
@@ -74,6 +91,17 @@
           <IconTablerExternalLink class="openclaw-dashboard-icon" />
           <span class="openclaw-dashboard-label">OpenClaw Dashboard</span>
         </a>
+
+        <button
+          v-if="!isSidebarCollapsed"
+          class="sidebar-settings-link"
+          :class="{ 'is-active': isSettingsRoute }"
+          type="button"
+          @click="router.push({ name: 'settings' })"
+        >
+          <IconTablerSettings class="sidebar-settings-icon" />
+          <span>Settings</span>
+        </button>
       </section>
     </template>
 
@@ -96,7 +124,13 @@
         </ContentHeader>
 
         <section class="content-body">
-          <template v-if="isSkillsRoute">
+          <template v-if="isTerminalRoute">
+            <TerminalPane class="content-terminal" @go-to-settings="router.push({ name: 'settings' })" />
+          </template>
+          <template v-else-if="isSettingsRoute">
+            <SettingsPane />
+          </template>
+          <template v-else-if="isSkillsRoute">
             <SkillsHub />
           </template>
           <template v-else-if="isHomeRoute">
@@ -164,10 +198,13 @@ import ThreadComposer from './components/content/ThreadComposer.vue'
 import QueuedMessages from './components/content/QueuedMessages.vue'
 import ComposerDropdown from './components/content/ComposerDropdown.vue'
 import SkillsHub from './components/content/SkillsHub.vue'
+import TerminalPane from './components/content/TerminalPane.vue'
+import SettingsPane from './components/content/SettingsPane.vue'
 import SidebarThreadControls from './components/sidebar/SidebarThreadControls.vue'
 import IconTablerSearch from './components/icons/IconTablerSearch.vue'
 import IconTablerX from './components/icons/IconTablerX.vue'
 import IconTablerExternalLink from './components/icons/IconTablerExternalLink.vue'
+import IconTablerSettings from './components/icons/IconTablerSettings.vue'
 import { useDesktopState } from './composables/useDesktopState'
 import type { ReasoningEffort, ThreadScrollState } from './types/codex'
 
@@ -245,8 +282,13 @@ const knownThreadIdSet = computed(() => {
 
 const isHomeRoute = computed(() => route.name === 'home')
 const isSkillsRoute = computed(() => route.name === 'skills')
+const isTerminalRoute = computed(() => route.name === 'terminal')
+const isSettingsRoute = computed(() => route.name === 'settings')
+const isChatPane = computed(() => !isSkillsRoute.value && !isTerminalRoute.value && !isSettingsRoute.value)
 const contentTitle = computed(() => {
   if (isSkillsRoute.value) return 'Skills'
+  if (isTerminalRoute.value) return 'Terminal'
+  if (isSettingsRoute.value) return 'Settings'
   if (isHomeRoute.value) return 'New thread'
   return selectedThread.value?.title ?? 'Choose a thread'
 })
@@ -351,6 +393,14 @@ function onStartNewThreadFromToolbar(): void {
   void router.push({ name: 'home' })
 }
 
+function onNavChat(): void {
+  if (isChatPane.value) return
+  if (selectedThreadId.value) {
+    void router.push({ name: 'thread', params: { threadId: selectedThreadId.value } })
+  } else {
+    void router.push({ name: 'home' })
+  }
+}
 function onRenameProject(payload: { projectName: string; displayName: string }): void {
   renameProject(payload.projectName, payload.displayName)
 }
@@ -449,7 +499,7 @@ async function syncThreadSelectionWithRoute(): Promise<void> {
   isRouteSyncInProgress.value = true
 
   try {
-    if (route.name === 'home' || route.name === 'skills') {
+    if (route.name === 'home' || route.name === 'skills' || route.name === 'terminal' || route.name === 'settings') {
       if (selectedThreadId.value !== '') {
         await selectThread('')
       }
@@ -496,7 +546,7 @@ watch(
   async (threadId) => {
     if (!hasInitialized.value) return
     if (isRouteSyncInProgress.value) return
-    if (isHomeRoute.value || isSkillsRoute.value) return
+    if (isHomeRoute.value || isSkillsRoute.value || isTerminalRoute.value || isSettingsRoute.value) return
 
     if (!threadId) {
       if (route.name !== 'home') {
@@ -600,12 +650,42 @@ async function submitFirstMessageForNewThread(
   @apply bg-zinc-200 text-zinc-900 font-medium;
 }
 
+.sidebar-pane-nav {
+  @apply mx-2 flex items-center gap-0.5 rounded-lg bg-zinc-100 p-0.5;
+}
+
+.sidebar-pane-nav-btn {
+  @apply flex-1 rounded-md border-0 bg-transparent px-2 py-1 text-xs font-medium text-zinc-600 transition
+         hover:bg-white hover:text-zinc-900 cursor-pointer;
+}
+
+.sidebar-pane-nav-btn.is-active {
+  @apply bg-white text-zinc-900 shadow-sm;
+}
+
+.sidebar-settings-link {
+  @apply mx-2 mb-1 flex items-center gap-2 rounded-md border-0 bg-transparent px-2.5 py-2 text-sm
+         text-zinc-500 transition hover:bg-zinc-100 hover:text-zinc-700 cursor-pointer;
+}
+
+.sidebar-settings-link.is-active {
+  @apply bg-zinc-100 text-zinc-900;
+}
+
+.sidebar-settings-icon {
+  @apply w-4 h-4 shrink-0;
+}
+
 .sidebar-thread-controls-header-host {
   @apply ml-1;
 }
 
 .content-body {
   @apply flex-1 min-h-0 w-full flex flex-col gap-3 pt-1 pb-4 overflow-y-hidden overflow-x-visible;
+}
+
+.content-terminal {
+  @apply flex-1 min-h-0 pb-0;
 }
 
 .content-error {

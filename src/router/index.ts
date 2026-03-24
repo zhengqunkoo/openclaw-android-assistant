@@ -23,6 +23,16 @@ const router = createRouter({
       component: EmptyRouteView,
     },
     {
+      path: '/terminal',
+      name: 'terminal',
+      component: EmptyRouteView,
+    },
+    {
+      path: '/settings',
+      name: 'settings',
+      component: EmptyRouteView,
+    },
+    {
       path: '/new-thread',
       redirect: { name: 'home' },
     },

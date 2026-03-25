@@ -23,12 +23,14 @@ class CodexServerManager(private val context: Context) {
         private const val CODEX_VERSION = "0.104.0"
         const val OPENCLAW_GATEWAY_PORT = 18789
         const val OPENCLAW_CONTROL_UI_PORT = 19001
+        const val TTYD_PORT = 7681
     }
 
     private var serverProcess: Process? = null
     private var proxyProcess: Process? = null
     private var openClawGatewayProcess: Process? = null
     private var openClawControlUiProcess: Process? = null
+    private var ttydProcess: Process? = null
 
     val isRunning: Boolean
         get() {
@@ -99,6 +101,11 @@ class CodexServerManager(private val context: Context) {
     }
 
     fun isServerBundleInstalled(): Boolean = false
+
+    fun isTtydInstalled(): Boolean {
+        val paths = BootstrapInstaller.getPaths(context)
+        return File(paths.prefixDir, "bin/ttyd").exists()
+    }
 
     /**
      * The native Rust binary that the JS launcher delegates to.
@@ -975,6 +982,91 @@ H3
         return true
     }
 
+    // ── ttyd terminal ────────────────────────────────────────────────────────
+
+    /**
+     * Install ttyd from the Termux repository. ttyd provides a web-based
+     * terminal interface (https://github.com/zhengqunkoo/ttyd) that the
+     * Terminal pane displays in an iframe at http://127.0.0.1:[TTYD_PORT].
+     */
+    fun installTtyd(onProgress: (String) -> Unit): Boolean {
+        onProgress("Installing ttyd…")
+        val code = runInPrefix(
+            "apt-get install -y ttyd 2>&1",
+            onOutput = { onProgress(it) },
+        )
+        if (code != 0) {
+            Log.e(TAG, "apt-get install ttyd failed with code $code")
+            return false
+        }
+        return isTtydInstalled()
+    }
+
+    /**
+     * Start ttyd on [TTYD_PORT], bound to localhost only, running the
+     * Termux shell. The Terminal pane in the web UI will connect to it
+     * via an iframe at http://127.0.0.1:[TTYD_PORT].
+     */
+    fun startTtyd(): Boolean {
+        if (ttydProcess != null) {
+            try {
+                ttydProcess!!.exitValue()
+                ttydProcess = null
+            } catch (_: IllegalThreadStateException) {
+                Log.i(TAG, "ttyd already running")
+                return true
+            }
+        }
+
+        val paths = BootstrapInstaller.getPaths(context)
+        val env = buildEnvironment(paths)
+        val shell = "${paths.prefixDir}/bin/sh"
+        val shellCmd = if (File(paths.prefixDir, "bin/bash").exists()) {
+            "${paths.prefixDir}/bin/bash"
+        } else {
+            "${paths.prefixDir}/bin/sh"
+        }
+        val cmd = "exec ttyd --port $TTYD_PORT --interface 127.0.0.1 --writable $shellCmd 2>&1"
+
+        val pb = ProcessBuilder(shell, "-c", cmd)
+        pb.environment().clear()
+        pb.environment().putAll(env)
+        pb.directory(File(paths.homeDir))
+        pb.redirectErrorStream(true)
+
+        val proc = pb.start()
+        ttydProcess = proc
+
+        Thread {
+            val reader = BufferedReader(InputStreamReader(proc.inputStream))
+            var line = reader.readLine()
+            while (line != null) {
+                Log.d(TAG, "[ttyd] $line")
+                line = reader.readLine()
+            }
+            Log.i(TAG, "ttyd exited with code: ${proc.waitFor()}")
+        }.start()
+
+        // Wait for ttyd to open its listening socket (up to 10 seconds)
+        val deadline = System.currentTimeMillis() + 10_000
+        while (System.currentTimeMillis() < deadline) {
+            try {
+                java.net.Socket("127.0.0.1", TTYD_PORT).use { }
+                Log.i(TAG, "ttyd started on 127.0.0.1:$TTYD_PORT")
+                return true
+            } catch (_: Exception) {
+                Thread.sleep(200)
+            }
+        }
+        Log.w(TAG, "ttyd did not open port $TTYD_PORT within 10 seconds")
+        return true
+    }
+
+    private fun stopTtyd() {
+        ttydProcess?.destroy()
+        ttydProcess = null
+    }
+
     fun installCodex(onProgress: (String) -> Unit): Boolean {
         val paths = BootstrapInstaller.getPaths(context)
         val prefix = paths.prefixDir
@@ -1392,6 +1484,7 @@ WEOF
         }
 
         stopOpenClaw()
+        stopTtyd()
         stopProxy()
         Log.i(TAG, "Server stopped")
     }

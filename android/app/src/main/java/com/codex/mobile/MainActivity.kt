@@ -105,6 +105,25 @@ class MainActivity : AppCompatActivity() {
                 view: WebView,
                 url: String,
             ): Boolean = false
+
+            override fun onPageFinished(view: WebView?, url: String?) {
+                super.onPageFinished(view, url)
+                if (url?.startsWith("http://127.0.0.1:${CodexServerManager.SERVER_PORT}") == true) {
+                    val ttydUrl = "http://127.0.0.1:${CodexServerManager.TTYD_PORT}"
+                    view?.evaluateJavascript(
+                        """
+                        (function() {
+                            var key = 'openclaw.ttyd-url.v1';
+                            if (!localStorage.getItem(key)) {
+                                localStorage.setItem(key, '$ttydUrl');
+                                window.location.reload();
+                            }
+                        })();
+                        """.trimIndent(),
+                        null,
+                    )
+                }
+            }
         }
 
         webView.webChromeClient = object : WebChromeClient() {
@@ -265,6 +284,20 @@ class MainActivity : AppCompatActivity() {
 
             updateStatus("Starting OpenClaw Control UI…")
             serverManager.startOpenClawControlUiServer()
+        }
+
+        // Step 7b: Install and start ttyd terminal
+        var ttydAvailable = serverManager.isTtydInstalled()
+        if (!ttydAvailable) {
+            updateStatus("Installing ttyd terminal…", "This may take a moment")
+            ttydAvailable = serverManager.installTtyd { msg -> updateDetail(msg) }
+            if (!ttydAvailable) {
+                Log.w(TAG, "ttyd install failed — continuing without terminal")
+            }
+        }
+        if (ttydAvailable) {
+            updateStatus("Starting ttyd terminal…")
+            serverManager.startTtyd()
         }
 
         // Step 8: Start web server

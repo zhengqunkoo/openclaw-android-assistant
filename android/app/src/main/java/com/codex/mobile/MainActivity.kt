@@ -41,7 +41,7 @@ class MainActivity : AppCompatActivity() {
         statusDetail = findViewById(R.id.statusDetail)
         progressBar = findViewById(R.id.progressBar)
 
-        serverManager = CodexServerManager(this)
+        serverManager = CodexServerManager.setInstance(CodexServerManager(applicationContext))
 
         requestBatteryOptimizationExemption()
         startForegroundService()
@@ -51,8 +51,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        serverManager.stopServer()
-        stopService(Intent(this, CodexForegroundService::class.java))
+        // Do NOT stop the server or foreground service here — let them keep
+        // running in the background so the OpenClaw gateway stays active after
+        // the user leaves the app. The service's watchdog will restart the
+        // gateway if it crashes, and BootReceiver will start it again after
+        // a device reboot.
     }
 
     private fun requestBatteryOptimizationExemption() {
@@ -132,6 +135,21 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun runSetup() {
+        // Fast-path: if the web server is already running (e.g. the activity
+        // was recreated after a screen rotation while the foreground service kept
+        // the server alive), skip the full setup flow and load the UI immediately.
+        // The 3-second window is short enough to not block first-run setup but
+        // long enough for the server to respond if it is already listening.
+        if (serverManager.waitForServer(timeoutMs = 3_000)) {
+            Log.i(TAG, "Server already running — skipping setup")
+            runOnUiThread {
+                showLoading(false)
+                webView.visibility = android.view.View.VISIBLE
+                webView.loadUrl("http://127.0.0.1:${CodexServerManager.SERVER_PORT}/")
+            }
+            return
+        }
+
         // Step 1: Extract bootstrap
         if (!BootstrapInstaller.isBootstrapInstalled(this)) {
             updateStatus("Extracting environment…")

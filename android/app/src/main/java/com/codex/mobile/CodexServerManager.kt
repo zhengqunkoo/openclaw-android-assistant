@@ -23,6 +23,31 @@ class CodexServerManager(private val context: Context) {
         private const val CODEX_VERSION = "0.104.0"
         const val OPENCLAW_GATEWAY_PORT = 18789
         const val OPENCLAW_CONTROL_UI_PORT = 19001
+
+        /**
+         * Shared instance used by both [MainActivity] and
+         * [CodexForegroundService] so the watchdog can access the running
+         * processes without a separate manager being created.
+         *
+         * Set atomically via [setInstance] to avoid duplicate creation.
+         */
+        @Volatile
+        private var _instance: CodexServerManager? = null
+
+        val instance: CodexServerManager? get() = _instance
+
+        /**
+         * Atomically sets the shared instance.  Only the first caller wins;
+         * subsequent calls with a different object are ignored, ensuring a
+         * single [CodexServerManager] is used across the Activity and Service.
+         */
+        @Synchronized
+        fun setInstance(mgr: CodexServerManager): CodexServerManager {
+            if (_instance == null) {
+                _instance = mgr
+            }
+            return _instance!!
+        }
     }
 
     private var serverProcess: Process? = null
@@ -33,6 +58,20 @@ class CodexServerManager(private val context: Context) {
     val isRunning: Boolean
         get() {
             val proc = serverProcess ?: return false
+            return try {
+                proc.exitValue()
+                false
+            } catch (_: IllegalThreadStateException) {
+                true
+            }
+        }
+
+    /**
+     * Returns true if the OpenClaw gateway process is still alive.
+     */
+    val isGatewayRunning: Boolean
+        get() {
+            val proc = openClawGatewayProcess ?: return false
             return try {
                 proc.exitValue()
                 false
